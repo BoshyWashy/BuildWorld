@@ -1,0 +1,100 @@
+# BuildWorld Configuration
+# Primary and Secondary Colors (Minecraft color codes: 0-9, a-f)
+Colors:
+  Primary: "b"  # Aqua by default
+  Secondary: "f" # White by default
+
+# World Settings
+World:
+  DefaultDiameter: 100
+  MaxWorldsPerPlayer: 1
+  CreateCooldown: 60 # Seconds between world creations
+  VoidWorld:
+    GenerateStructures: false
+    AllowEntities: false
+  Border:
+    Enabled: true
+
+# WorldGuard Settings
+WorldGuard:
+  DefaultFlags:
+    passthrough: "deny"
+    build: "deny"
+    block-break: "deny"
+    block-place: "deny"
+    use: "allow"
+    chest-access: "deny"
+    pvp: "deny"
+
+# Online Expansion System
+OnlineWorldExpansion:
+  Enabled: true
+  BlockGainPerMin: 20
+  CheckInterval: 60 # seconds
+
+# Member/Owner Permissions (Nested under buildworld.member and buildworld.owner)
+Permissions:
+  Member:
+    - "worldedit.*"
+    - "axiom.*"
+    - "arceon.*"
+    - "//confirm"
+  Owner:
+    - "worldedit.*"
+    - "axiom.*"
+    - "arceon.*"
+    - "//confirm"
+    - "buildworld.admin.memberedit"
+
+# Messages (Use %primary% and %secondary% for colors)
+Messages:
+  Title:
+    FadeIn: 20
+    Stay: 60
+    FadeOut: 20
+  Welcome:
+    - "&l%primary%&m= = = = = = = = = = = = = = = = = = = = = = = ="
+    - "%primary%Welcome to %secondary%<world>%primary%!"
+    - ""
+    - "%primary%World Edit and Axiom are recommended skills to learn to build."
+    - ""
+    - "%primary%Use %secondary%/bw help %primary%to add members to help build!"
+    - ""
+    - "%primary%&lHappy Building!"
+    - ""
+    - "&l%primary%&m= = = = = = = = = = = = = = = = = = = = = = = ="
+  VisitorWelcome:
+    - "&l%primary%&m= = = = = = = = = = = = = = = = = = = = = = = ="
+    - " "
+    - "%primary%Welcome to %secondary%<world>%primary%!"
+    - " "
+    - "%primary%&lEnjoy the visit!!"
+    - " "
+    - "&l%primary%&m= = = = = = = = = = = = = = = = = = = = = = = ="
+  SpawnWorldWelcome:
+    - "&l%primary%&m= = = = = = = = = = = = = = = = = = = = = = = ="
+    - " "
+    - "%primary%&lWelcome to the BuildWorld System!"
+    - " "
+    - "%secondary%Create your own world with /bw create_world"
+    - "%secondary%Visit other worlds with /bw menu"
+    - " "
+    - "&l%primary%&m= = = = = = = = = = = = = = = = = = = = = = = ="
+
+# Tutorials for /bw help <topic>
+Tutorials:
+  commands: "%primary%Use /bw help commands to see all available commands!"
+
+# Database
+Database:
+  Type: SQLITE # or MYSQL
+  Host: localhost
+  Port: 3306
+  Database: buildworld
+  Username: root
+  Password: password
+
+# Plugin Maintenance Mode
+Maintenance:
+  Enabled: false
+  KickMessage: "&cThe BuildWorld system is currently under maintenance. Please try again later."

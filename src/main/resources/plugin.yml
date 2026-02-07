@@ -1,0 +1,26 @@
+name: BuildWorld
+version: 1.0.0
+main: com.boshywashy.buildworld.BuildWorld
+api-version: '1.21'
+description: A comprehensive build world management plugin
+author: BoshyWashy
+softdepend: [WorldGuard, Vault, PlaceholderAPI]
+commands:
+  buildworld:
+    description: Main BuildWorld command
+    aliases: [bw]
+    usage: /buildworld <subcommand>
+  buildworldadmin:
+    description: Admin commands for BuildWorld
+    aliases: [bwa]
+permissions:
+  buildworld.use:
+    default: true
+  buildworld.admin:
+    default: op
+  buildworld.spawn:
+    default: true
+  buildworld.create:
+    default: true
+  buildworld.bypass:
+    default: op
