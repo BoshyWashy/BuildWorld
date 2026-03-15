@@ -8,7 +8,26 @@ Colors:
 World:
   DefaultDiameter: 100
   MaxWorldsPerPlayer: 1
-  CreateCooldown: 60 # Seconds between world creations
+  CreateCooldown: 120 # Seconds between world creations
+  # CreationSpeedPercent controls the delay before world creation begins.
+  # The actual world creation (Bukkit.createWorld) always runs on the main thread
+  # because that is a Bukkit requirement. However, file preparation is done async,
+  # and keepSpawnInMemory is disabled to minimise chunk generation work.
+  #
+  # This setting adds a tick delay before creation starts to give the server
+  # time to breathe, and prevents two players from triggering creation at the
+  # same time:
+  #   100 =   0 ticks delay (immediate — may cause a brief TPS spike)
+  #    75 =  25 ticks (~1.25 seconds)
+  #    50 =  50 ticks (~2.5 seconds)
+  #    25 =  75 ticks (~3.75 seconds)
+  #    10 =  90 ticks (~4.5 seconds)
+  #     1 =  99 ticks (~5 seconds)
+  #
+  # Recommended: 50 for busy servers. This does NOT make creation slower for
+  # the player — it just staggers multiple creations so the server handles
+  # them one at a time.
+  CreationSpeedPercent: 50
   VoidWorld:
     GenerateStructures: false
     AllowEntities: false

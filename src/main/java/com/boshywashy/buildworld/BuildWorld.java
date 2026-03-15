@@ -33,7 +33,7 @@ public class BuildWorld extends JavaPlugin {
         // Initialize managers
         this.configManager = new ConfigManager(this);
         this.databaseManager = new DatabaseManager(this);
-        this.worldManager = new WorldManager(this);
+        this.worldManager = new WorldManager(this);   // starts the auto-unload task internally
         this.permissionManager = new PermissionManager(this);
         this.expansionManager = new ExpansionManager(this);
         this.worldMenuGUI = new WorldMenuGUI(this);
@@ -65,14 +65,12 @@ public class BuildWorld extends JavaPlugin {
         for (String worldName : worlds) {
             World world = Bukkit.getWorld(worldName);
             if (world == null) {
-                // World not loaded, load it
                 WorldCreator wc = new WorldCreator(worldName);
                 wc.generator(new VoidWorldGenerator());
                 wc.generateStructures(false);
                 world = Bukkit.createWorld(wc);
 
                 if (world != null) {
-                    // Restore settings
                     int diameter = databaseManager.getDiameter(worldName);
                     world.getWorldBorder().setCenter(0, 0);
                     world.getWorldBorder().setSize(diameter);
@@ -88,6 +86,9 @@ public class BuildWorld extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (worldManager != null) {
+            worldManager.stopAutoUnloadTask();
+        }
         if (expansionManager != null) {
             expansionManager.stopExpansionTask();
         }

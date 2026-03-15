@@ -43,33 +43,30 @@ public class WorldMenuGUI implements Listener {
 
         calculateWorldLists(player, data);
 
-        // Bold title
         Inventory inv = Bukkit.createInventory(null, 54, MessageUtils.colorize("&l%primary%BuildWorld Menu"));
 
+        // Top 18 slots: personal worlds (owned + member) — always shown regardless of hidden status
         int slot = 0;
         for (int i = 0; i < 18 && i < data.personalWorlds.size(); i++) {
-            String worldName = data.personalWorlds.get(i);
-            addWorldItem(inv, slot++, worldName, playerUUID);
+            addWorldItem(inv, slot++, data.personalWorlds.get(i), player);
         }
 
+        // Separator row
         for (int i = 18; i < 27; i++) {
-            ItemStack glass = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
-            ItemMeta meta = glass.getItemMeta();
-            meta.setDisplayName(" ");
-            glass.setItemMeta(meta);
-            inv.setItem(i, glass);
+            inv.setItem(i, createGlassPane(Material.GRAY_STAINED_GLASS_PANE, " "));
         }
 
+        // Lower 18 slots: online/all worlds (paginated)
         int onlineWorldsPerPage = 18;
         int startIdx = (page - 1) * onlineWorldsPerPage;
         int endIdx = Math.min(startIdx + onlineWorldsPerPage, data.onlineWorlds.size());
 
         slot = 27;
         for (int i = startIdx; i < endIdx; i++) {
-            String worldName = data.onlineWorlds.get(i);
-            addWorldItem(inv, slot++, worldName, playerUUID);
+            addWorldItem(inv, slot++, data.onlineWorlds.get(i), player);
         }
 
+        // Bottom navigation row
         ItemStack compass = new ItemStack(Material.COMPASS);
         ItemMeta compassMeta = compass.getItemMeta();
         compassMeta.setDisplayName(MessageUtils.colorize("%primary%Teleport to Spawn"));
@@ -114,36 +111,58 @@ public class WorldMenuGUI implements Listener {
         player.openInventory(inv);
     }
 
+    /**
+     * Who can see a hidden world in the BOTTOM (public discovery) section:
+     *   - Operators (see it with a grey "(Hidden)" tag)
+     *   - The world's owner
+     *   - Members of the world
+     *
+     * The TOP (personal) section always shows all worlds the viewer owns or is a member of,
+     * regardless of hidden status — that section is never filtered.
+     */
+    private boolean canViewHiddenWorld(String worldName, UUID viewerUUID, boolean isOp) {
+        if (isOp) return true;
+        if (plugin.getDatabaseManager().isOwner(worldName, viewerUUID)) return true;
+        if (plugin.getDatabaseManager().isMember(worldName, viewerUUID)) return true;
+        return false;
+    }
+
     private void calculateWorldLists(Player player, MenuData data) {
         UUID playerUUID = player.getUniqueId();
+        boolean isOp = player.isOp();
 
+        // ── Personal section (top 18 slots) ─────────────────────────────────
+        // Always includes all worlds the viewer owns or is a member of,
+        // regardless of hidden/open status.
         data.personalWorlds = new ArrayList<>();
-        List<String> owned = plugin.getDatabaseManager().getOwnedWorlds(playerUUID);
-        List<String> memberOf = plugin.getDatabaseManager().getMemberWorlds(playerUUID);
-
         Set<String> personalSet = new LinkedHashSet<>();
-        personalSet.addAll(owned);
-        personalSet.addAll(memberOf);
+        personalSet.addAll(plugin.getDatabaseManager().getOwnedWorlds(playerUUID));
+        personalSet.addAll(plugin.getDatabaseManager().getMemberWorlds(playerUUID));
         data.personalWorlds.addAll(personalSet);
 
+        // ── Public discovery section (bottom 18 slots) ───────────────────────
         data.onlineWorlds = new ArrayList<>();
 
         if (data.showAllWorlds) {
-            // ALL worlds in database (including closed ones)
-            List<String> allWorlds = plugin.getDatabaseManager().getAllWorlds();
+            // "All Worlds" filter: every world in the database
             List<WorldSortEntry> entries = new ArrayList<>();
+            for (String worldName : plugin.getDatabaseManager().getAllWorlds()) {
+                boolean hidden = plugin.getDatabaseManager().isHidden(worldName);
 
-            for (String worldName : allWorlds) {
+                // Skip hidden worlds unless the viewer is allowed to see them
+                if (hidden && !canViewHiddenWorld(worldName, playerUUID, isOp)) continue;
+
                 String nick = plugin.getDatabaseManager().getNickname(worldName);
                 entries.add(new WorldSortEntry(worldName, nick));
             }
-
             entries.sort(Comparator.comparing(e -> e.sortKey.toLowerCase()));
             for (WorldSortEntry entry : entries) {
                 data.onlineWorlds.add(entry.worldName);
             }
+
         } else {
-            // Only worlds owned by online players (open only)
+            // "Online Only" filter: worlds whose owner is currently online, and that are open
+            // (hidden worlds from online owners are still shown to eligible viewers)
             Set<UUID> onlineOwners = new HashSet<>();
             for (Player p : Bukkit.getOnlinePlayers()) {
                 if (!plugin.getDatabaseManager().getOwnedWorlds(p.getUniqueId()).isEmpty()) {
@@ -153,15 +172,22 @@ public class WorldMenuGUI implements Listener {
 
             List<WorldSortEntry> entries = new ArrayList<>();
             for (UUID ownerUUID : onlineOwners) {
-                List<String> worlds = plugin.getDatabaseManager().getOwnedWorlds(ownerUUID);
-                for (String worldName : worlds) {
-                    if (plugin.getDatabaseManager().isOpen(worldName)) {
-                        String nick = plugin.getDatabaseManager().getNickname(worldName);
-                        entries.add(new WorldSortEntry(worldName, nick));
+                for (String worldName : plugin.getDatabaseManager().getOwnedWorlds(ownerUUID)) {
+                    boolean hidden = plugin.getDatabaseManager().isHidden(worldName);
+                    boolean open = plugin.getDatabaseManager().isOpen(worldName);
+
+                    if (hidden) {
+                        // Hidden world: only show to eligible viewers (op / owner / member)
+                        if (!canViewHiddenWorld(worldName, playerUUID, isOp)) continue;
+                    } else {
+                        // Normal world: only show if open
+                        if (!open) continue;
                     }
+
+                    String nick = plugin.getDatabaseManager().getNickname(worldName);
+                    entries.add(new WorldSortEntry(worldName, nick));
                 }
             }
-
             entries.sort(Comparator.comparing(e -> e.sortKey.toLowerCase()));
             for (WorldSortEntry entry : entries) {
                 data.onlineWorlds.add(entry.worldName);
@@ -187,9 +213,24 @@ public class WorldMenuGUI implements Listener {
         return item;
     }
 
-    private void addWorldItem(Inventory inv, int slot, String worldName, UUID viewerUUID) {
+    /**
+     * Renders a world as an inventory item.
+     *
+     * Visibility rules enforced here match calculateWorldLists:
+     * - Hidden worlds are only rendered for ops, the world's owner, or its members.
+     * - Hidden worlds show a grey "(Hidden)" tag in the display name so eligible
+     *   viewers know why it doesn't appear publicly.
+     */
+    private void addWorldItem(Inventory inv, int slot, String worldName, Player viewer) {
         String ownerUUID = plugin.getDatabaseManager().getWorldOwner(worldName);
         if (ownerUUID == null) return;
+
+        UUID viewerUUID = viewer.getUniqueId();
+        boolean isOp = viewer.isOp();
+        boolean isHidden = plugin.getDatabaseManager().isHidden(worldName);
+
+        // Safety guard: never render hidden worlds to viewers who shouldn't see them
+        if (isHidden && !canViewHiddenWorld(worldName, viewerUUID, isOp)) return;
 
         String ownerName = Bukkit.getOfflinePlayer(UUID.fromString(ownerUUID)).getName();
         if (ownerName == null) ownerName = "Unknown";
@@ -209,10 +250,17 @@ public class WorldMenuGUI implements Listener {
         if (nickname == null) nickname = worldName;
 
         boolean isOpen = plugin.getDatabaseManager().isOpen(worldName);
-        String displayName = isOpen ?
-                MessageUtils.colorize("%primary%" + nickname) :
-                MessageUtils.colorize("%secondary%" + nickname + " &7(Closed)");
 
+        // Build display name
+        String displayName;
+        if (isHidden) {
+            // Eligible viewers see hidden worlds with a dark-grey "(Hidden)" tag
+            displayName = MessageUtils.colorize("%primary%" + nickname + " &8(Hidden)");
+        } else if (isOpen) {
+            displayName = MessageUtils.colorize("%primary%" + nickname);
+        } else {
+            displayName = MessageUtils.colorize("%secondary%" + nickname + " &7(Closed)");
+        }
         meta.setDisplayName(displayName);
 
         List<String> lore = new ArrayList<>();
@@ -223,20 +271,12 @@ public class WorldMenuGUI implements Listener {
             StringBuilder memStr = new StringBuilder("%secondary%Members: ");
             int count = 0;
             for (UUID mem : members) {
-                if (count >= 5) {
-                    memStr.append("... ");
-                    break;
-                }
+                if (count >= 5) { memStr.append("... "); break; }
                 String memName = Bukkit.getOfflinePlayer(mem).getName();
-                if (memName != null) {
-                    memStr.append(memName).append(", ");
-                    count++;
-                }
+                if (memName != null) { memStr.append(memName).append(", "); count++; }
             }
             String memString = memStr.toString();
-            if (memString.endsWith(", ")) {
-                memString = memString.substring(0, memString.length() - 2);
-            }
+            if (memString.endsWith(", ")) memString = memString.substring(0, memString.length() - 2);
             lore.add(MessageUtils.colorize(memString));
         }
 
@@ -249,8 +289,11 @@ public class WorldMenuGUI implements Listener {
             lore.add(MessageUtils.colorize("%primary%&lYou are a Member"));
         }
 
-        if (!isOpen) {
+        if (!isOpen && !isHidden) {
             lore.add(MessageUtils.colorize("&c&lWorld is Closed"));
+        }
+        if (isHidden) {
+            lore.add(MessageUtils.colorize("&8&lWorld is Hidden"));
         }
 
         lore.add("");
@@ -314,14 +357,15 @@ public class WorldMenuGUI implements Listener {
             return;
         }
 
-        String nickname = ChatColor.stripColor(displayName);
-        nickname = nickname.replaceAll("§[0-9a-fk-or]", "").trim();
-        nickname = nickname.replace(" (Closed)", "").trim();
+        // Resolve world from display name — strip colour codes and status tags
+        String cleanName = ChatColor.stripColor(displayName);
+        cleanName = cleanName.replaceAll("§[0-9a-fk-or]", "").trim();
+        cleanName = cleanName.replace(" (Closed)", "").replace(" (Hidden)", "").trim();
 
-        String worldName = plugin.getDatabaseManager().getWorldByNickname(nickname);
+        String worldName = plugin.getDatabaseManager().getWorldByNickname(cleanName);
         if (worldName == null) {
             for (String w : plugin.getDatabaseManager().getAllWorlds()) {
-                if (plugin.getDatabaseManager().getNickname(w).equalsIgnoreCase(nickname)) {
+                if (plugin.getDatabaseManager().getNickname(w).equalsIgnoreCase(cleanName)) {
                     worldName = w;
                     break;
                 }
@@ -333,8 +377,18 @@ public class WorldMenuGUI implements Listener {
             return;
         }
 
-        // Check if world is closed and player is not member/owner
-        if (!plugin.getDatabaseManager().isOpen(worldName) &&
+        boolean isHidden = plugin.getDatabaseManager().isHidden(worldName);
+        boolean isOp = player.isOp();
+
+        // Re-check eligibility at click time (menu data could be stale)
+        if (isHidden && !canViewHiddenWorld(worldName, playerUUID, isOp)) {
+            player.sendMessage(MessageUtils.colorize("&cThis world is hidden!"));
+            player.closeInventory();
+            return;
+        }
+
+        // Closed world check (hidden worlds bypass open/closed for eligible viewers)
+        if (!isHidden && !plugin.getDatabaseManager().isOpen(worldName) &&
                 !plugin.getDatabaseManager().isOwner(worldName, playerUUID) &&
                 !plugin.getDatabaseManager().isMember(worldName, playerUUID)) {
             player.sendMessage(MessageUtils.colorize("&cThis world is closed!"));
@@ -342,13 +396,23 @@ public class WorldMenuGUI implements Listener {
             return;
         }
 
-        World world = Bukkit.getWorld(worldName);
+        // Maintenance mode — only admins bypass
+        if (plugin.getConfig().getBoolean("Maintenance.Enabled", false) && !player.hasPermission("buildworld.admin")) {
+            player.sendMessage(MessageUtils.colorize(plugin.getConfig().getString("Maintenance.KickMessage",
+                    "&cThe BuildWorld system is currently under maintenance.")));
+            player.closeInventory();
+            return;
+        }
+
+        // Ensure world is loaded before teleporting
+        World world = plugin.getWorldManager().ensureWorldLoaded(worldName);
         if (world != null) {
             Location spawnLoc = plugin.getDatabaseManager().getWorldSpawn(worldName);
             player.teleport(spawnLoc);
+            String nickname = plugin.getDatabaseManager().getNickname(worldName);
             player.sendMessage(MessageUtils.colorize("%primary%Visiting %secondary%" + nickname));
         } else {
-            player.sendMessage(MessageUtils.colorize("&cWorld is not loaded!"));
+            player.sendMessage(MessageUtils.colorize("&cWorld could not be loaded!"));
         }
         player.closeInventory();
     }

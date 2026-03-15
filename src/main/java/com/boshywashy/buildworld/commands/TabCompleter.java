@@ -32,12 +32,29 @@ public class TabCompleter implements org.bukkit.command.TabCompleter {
 
         if (command.getName().equalsIgnoreCase("buildworld")) {
             if (args.length == 1) {
-                completions.addAll(Arrays.asList("spawn", "setspawn", "removespawn", "create_world", "nickname",
-                        "members", "open", "close", "item", "invite", "join", "retractinvite", "delete", "kick",
-                        "leave", "menu", "visit", "home", "info", "help", "ExpandWorld",
-                        "ExpansionBlockAmount", "MoveWorldSpawn"));
+                // Base subcommand list — everyone gets these
+                List<String> subs = new ArrayList<>(Arrays.asList(
+                        "spawn", "setspawn", "removespawn", "create_world",
+                        "nickname", "members", "open", "close", "item",
+                        "invite", "join", "retractinvite", "delete",
+                        "kick", "leave", "menu", "visit", "home", "info", "help",
+                        "ExpandWorld", "ExpansionBlockAmount", "MoveWorldSpawn"));
+
+                // Only show HideWorld / ShowWorld to players who own at least one world, or admins
+                if (sender instanceof Player) {
+                    Player p = (Player) sender;
+                    boolean isOwner = !plugin.getDatabaseManager().getOwnedWorlds(p.getUniqueId()).isEmpty();
+                    if (isOwner || p.hasPermission("buildworld.admin")) {
+                        subs.add("HideWorld");
+                        subs.add("ShowWorld");
+                    }
+                }
+                completions.addAll(subs);
+
             } else if (args.length == 2) {
                 switch (args[0].toLowerCase()) {
+
+                    // Commands that operate on worlds the player owns or is a member of
                     case "nickname":
                     case "open":
                     case "close":
@@ -48,62 +65,109 @@ public class TabCompleter implements org.bukkit.command.TabCompleter {
                     case "expandworld":
                     case "moveworldspawn":
                         if (sender instanceof Player) {
-                            List<String> worlds = plugin.getDatabaseManager().getOwnedWorlds(((Player) sender).getUniqueId());
-                            worlds.addAll(plugin.getDatabaseManager().getMemberWorlds(((Player) sender).getUniqueId()));
+                            Player p = (Player) sender;
+                            List<String> worlds = plugin.getDatabaseManager().getOwnedWorlds(p.getUniqueId());
+                            worlds.addAll(plugin.getDatabaseManager().getMemberWorlds(p.getUniqueId()));
                             for (String worldName : worlds) {
                                 String nick = plugin.getDatabaseManager().getNickname(worldName);
                                 completions.add(nick != null ? nick : worldName);
                             }
                         }
                         break;
+
+                    // HideWorld: only worlds the player personally OWNS (and that are not already hidden)
+                    case "hideworld":
+                        if (sender instanceof Player) {
+                            Player p = (Player) sender;
+                            List<String> ownedWorlds = plugin.getDatabaseManager().getOwnedWorlds(p.getUniqueId());
+                            // Admins also see all worlds that aren't yet hidden
+                            if (p.hasPermission("buildworld.admin")) {
+                                ownedWorlds = plugin.getDatabaseManager().getAllWorlds();
+                            }
+                            for (String worldName : ownedWorlds) {
+                                // Only suggest worlds that are not already hidden
+                                if (!plugin.getDatabaseManager().isHidden(worldName)) {
+                                    String nick = plugin.getDatabaseManager().getNickname(worldName);
+                                    completions.add(nick != null ? nick : worldName);
+                                }
+                            }
+                        }
+                        break;
+
+                    // ShowWorld: only worlds the player personally OWNS that are currently hidden
+                    case "showworld":
+                        if (sender instanceof Player) {
+                            Player p = (Player) sender;
+                            List<String> ownedWorlds = plugin.getDatabaseManager().getOwnedWorlds(p.getUniqueId());
+                            // Admins also see all hidden worlds
+                            if (p.hasPermission("buildworld.admin")) {
+                                ownedWorlds = plugin.getDatabaseManager().getAllWorlds();
+                            }
+                            for (String worldName : ownedWorlds) {
+                                // Only suggest worlds that ARE currently hidden
+                                if (plugin.getDatabaseManager().isHidden(worldName)) {
+                                    String nick = plugin.getDatabaseManager().getNickname(worldName);
+                                    completions.add(nick != null ? nick : worldName);
+                                }
+                            }
+                        }
+                        break;
+
                     case "kick":
                         if (sender instanceof Player) {
-                            List<String> worlds = plugin.getDatabaseManager().getOwnedWorlds(((Player) sender).getUniqueId());
-                            for (String worldName : worlds) {
+                            Player p = (Player) sender;
+                            for (String worldName : plugin.getDatabaseManager().getOwnedWorlds(p.getUniqueId())) {
                                 String nick = plugin.getDatabaseManager().getNickname(worldName);
                                 completions.add(nick != null ? nick : worldName);
                             }
                         }
                         break;
+
                     case "leave":
                         if (sender instanceof Player) {
-                            List<String> worlds = plugin.getDatabaseManager().getOwnedWorlds(((Player) sender).getUniqueId());
-                            worlds.addAll(plugin.getDatabaseManager().getMemberWorlds(((Player) sender).getUniqueId()));
+                            Player p = (Player) sender;
+                            List<String> worlds = plugin.getDatabaseManager().getOwnedWorlds(p.getUniqueId());
+                            worlds.addAll(plugin.getDatabaseManager().getMemberWorlds(p.getUniqueId()));
                             for (String worldName : worlds) {
                                 String nick = plugin.getDatabaseManager().getNickname(worldName);
                                 completions.add(nick != null ? nick : worldName);
                             }
                         }
                         break;
+
                     case "invite":
                     case "retractinvite":
                         completions.addAll(Arrays.asList("member", "owner"));
                         break;
+
                     case "join":
                     case "visit":
-                        List<String> allWorlds = plugin.getDatabaseManager().getAllWorlds();
-                        for (String worldName : allWorlds) {
+                        for (String worldName : plugin.getDatabaseManager().getAllWorlds()) {
                             if (plugin.getDatabaseManager().isOpen(worldName)) {
                                 String nick = plugin.getDatabaseManager().getNickname(worldName);
                                 completions.add(nick != null ? nick : worldName);
                             }
                         }
                         break;
+
                     case "home":
                         if (sender instanceof Player) {
-                            List<String> worlds = plugin.getDatabaseManager().getOwnedWorlds(((Player) sender).getUniqueId());
-                            worlds.addAll(plugin.getDatabaseManager().getMemberWorlds(((Player) sender).getUniqueId()));
+                            Player p = (Player) sender;
+                            List<String> worlds = plugin.getDatabaseManager().getOwnedWorlds(p.getUniqueId());
+                            worlds.addAll(plugin.getDatabaseManager().getMemberWorlds(p.getUniqueId()));
                             for (String worldName : worlds) {
                                 String nick = plugin.getDatabaseManager().getNickname(worldName);
                                 completions.add(nick != null ? nick : worldName);
                             }
                         }
                         break;
+
                     case "help":
                         completions.add("commands");
                         plugin.getConfigManager().getTutorialMessages().keySet().forEach(completions::add);
                         break;
                 }
+
             } else if (args.length == 3) {
                 switch (args[0].toLowerCase()) {
                     case "nickname":
@@ -112,8 +176,8 @@ public class TabCompleter implements org.bukkit.command.TabCompleter {
                     case "invite":
                         if (args[1].equalsIgnoreCase("member") || args[1].equalsIgnoreCase("owner")) {
                             if (sender instanceof Player) {
-                                List<String> worlds = plugin.getDatabaseManager().getOwnedWorlds(((Player) sender).getUniqueId());
-                                for (String worldName : worlds) {
+                                Player p = (Player) sender;
+                                for (String worldName : plugin.getDatabaseManager().getOwnedWorlds(p.getUniqueId())) {
                                     String nick = plugin.getDatabaseManager().getNickname(worldName);
                                     completions.add(nick != null ? nick : worldName);
                                 }
@@ -123,8 +187,8 @@ public class TabCompleter implements org.bukkit.command.TabCompleter {
                     case "retractinvite":
                         if (args[1].equalsIgnoreCase("member") || args[1].equalsIgnoreCase("owner")) {
                             if (sender instanceof Player) {
-                                List<String> worlds = plugin.getDatabaseManager().getOwnedWorlds(((Player) sender).getUniqueId());
-                                for (String worldName : worlds) {
+                                Player p = (Player) sender;
+                                for (String worldName : plugin.getDatabaseManager().getOwnedWorlds(p.getUniqueId())) {
                                     String nick = plugin.getDatabaseManager().getNickname(worldName);
                                     completions.add(nick != null ? nick : worldName);
                                 }
@@ -146,6 +210,7 @@ public class TabCompleter implements org.bukkit.command.TabCompleter {
                         }
                         break;
                 }
+
             } else if (args.length == 4) {
                 switch (args[0].toLowerCase()) {
                     case "invite":
@@ -154,35 +219,32 @@ public class TabCompleter implements org.bukkit.command.TabCompleter {
                     case "retractinvite":
                         String worldName = resolveWorldName(args[2]);
                         if (worldName != null) {
-                            List<UUID> invitedPlayers = plugin.getDatabaseManager().getInvitedPlayers(worldName);
-                            for (UUID uuid : invitedPlayers) {
+                            for (UUID uuid : plugin.getDatabaseManager().getInvitedPlayers(worldName)) {
                                 String name = Bukkit.getOfflinePlayer(uuid).getName();
-                                if (name != null) {
-                                    completions.add(name);
-                                }
+                                if (name != null) completions.add(name);
                             }
                             for (Player p : Bukkit.getOnlinePlayers()) {
                                 if (plugin.getDatabaseManager().getInviteRole(worldName, p.getUniqueId()) != null) {
-                                    if (!completions.contains(p.getName())) {
-                                        completions.add(p.getName());
-                                    }
+                                    if (!completions.contains(p.getName())) completions.add(p.getName());
                                 }
                             }
                         }
                         break;
                     case "delete":
-                        if (args[2].equalsIgnoreCase("confirm")) {
-                            completions.add("confirm");
-                        }
+                        if (args[2].equalsIgnoreCase("confirm")) completions.add("confirm");
                         break;
                 }
             }
+
         } else if (command.getName().equalsIgnoreCase("buildworldadmin")) {
             if (args.length == 1) {
-                completions.addAll(Arrays.asList("SetMaxWorld", "SetWorldDiameter", "MemberEdit",
+                completions.addAll(Arrays.asList(
+                        "SetMaxWorld", "SetWorldDiameter", "MemberEdit",
                         "colour", "TutorialAdd", "TutorialRemove", "TutorialEdit",
-                        "GiveBlocksForExpansion", "RemoveBlocksForExpansion", "OnlineWorldExpansion",
-                        "BlockGainTime", "CheckInterval", "GiveWorldCredits", "DeleteWorld", "Maintenance"));
+                        "GiveBlocksForExpansion", "RemoveBlocksForExpansion",
+                        "OnlineWorldExpansion", "BlockGainTime", "CheckInterval",
+                        "GiveWorldCredits", "DeleteWorld", "Maintenance", "visit"));
+
             } else if (args.length == 2) {
                 switch (args[0].toLowerCase()) {
                     case "setmaxworld":
@@ -211,13 +273,12 @@ public class TabCompleter implements org.bukkit.command.TabCompleter {
                     case "giveblocksforexpansion":
                     case "removeblocksforexpansion":
                     case "giveworldcredits":
-                        for (Player p : Bukkit.getOnlinePlayers()) {
-                            completions.add(p.getName());
-                        }
+                        for (Player p : Bukkit.getOnlinePlayers()) completions.add(p.getName());
                         break;
                     case "deleteworld":
-                        List<String> allWorlds = plugin.getDatabaseManager().getAllWorlds();
-                        for (String worldName : allWorlds) {
+                    case "visit":
+                        // Admin commands: show every world, including hidden/closed
+                        for (String worldName : plugin.getDatabaseManager().getAllWorlds()) {
                             String nick = plugin.getDatabaseManager().getNickname(worldName);
                             completions.add(nick != null ? nick : worldName);
                         }
@@ -234,6 +295,7 @@ public class TabCompleter implements org.bukkit.command.TabCompleter {
                                 .collect(Collectors.toList()));
                         break;
                 }
+
             } else if (args.length == 3) {
                 switch (args[0].toLowerCase()) {
                     case "memberedit":
@@ -249,6 +311,7 @@ public class TabCompleter implements org.bukkit.command.TabCompleter {
                         completions.addAll(Arrays.asList("1", "2", "3", "5", "10"));
                         break;
                 }
+
             } else if (args.length == 4) {
                 switch (args[0].toLowerCase()) {
                     case "memberedit":
@@ -276,18 +339,14 @@ public class TabCompleter implements org.bukkit.command.TabCompleter {
         }
 
         return completions.stream()
-                .filter(s -> s.toLowerCase().startsWith(args[args.length - 1].toLowerCase()))
+                .filter(s -> s != null && s.toLowerCase().startsWith(args[args.length - 1].toLowerCase()))
                 .collect(Collectors.toList());
     }
 
     private String resolveWorldName(String input) {
         String byNickname = plugin.getDatabaseManager().getWorldByNickname(input);
-        if (byNickname != null) {
-            return byNickname;
-        }
-        if (plugin.getDatabaseManager().isBuildWorld(input)) {
-            return input;
-        }
+        if (byNickname != null) return byNickname;
+        if (plugin.getDatabaseManager().isBuildWorld(input)) return input;
         return null;
     }
 }

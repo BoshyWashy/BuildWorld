@@ -105,6 +105,9 @@ public class AdminCommand implements CommandExecutor {
             case "maintenance":
                 handleMaintenance(sender, args);
                 break;
+            case "visit":
+                handleAdminVisit(sender, args);
+                break;
             default:
                 sendAdminHelp(sender);
                 break;
@@ -112,6 +115,48 @@ public class AdminCommand implements CommandExecutor {
 
         return true;
     }
+
+    // ── Admin Visit ───────────────────────────────────────────────────────────
+    // /bwa visit <world>  — teleports to the world's spawn even if closed/hidden.
+
+    private void handleAdminVisit(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player)) {
+            sender.sendMessage("Player only!");
+            return;
+        }
+
+        if (args.length < 2) {
+            sender.sendMessage(MessageUtils.colorize("&cUsage: /bwa visit <world>"));
+            return;
+        }
+
+        Player player = (Player) sender;
+        String worldName = resolveWorldName(args[1]);
+
+        if (worldName == null || !plugin.getDatabaseManager().isBuildWorld(worldName)) {
+            sender.sendMessage(MessageUtils.colorize("&cWorld not found in the BuildWorld database!"));
+            return;
+        }
+
+        // Maintenance mode: admins are always allowed to visit
+        // (maintenance only blocks non-admin players, so no check needed here)
+
+        // Ensure world is loaded (it may have been auto-unloaded)
+        World world = plugin.getWorldManager().ensureWorldLoaded(worldName);
+        if (world == null) {
+            sender.sendMessage(MessageUtils.colorize("&cFailed to load world!"));
+            return;
+        }
+
+        Location spawnLoc = plugin.getDatabaseManager().getWorldSpawn(worldName);
+        player.teleport(spawnLoc);
+
+        String nickname = plugin.getDatabaseManager().getNickname(worldName);
+        sender.sendMessage(MessageUtils.colorize("%primary%Teleported to %secondary%" + nickname +
+                " %primary%(" + worldName + ")"));
+    }
+
+    // ── Existing handlers ─────────────────────────────────────────────────────
 
     private void handleSetMaxWorld(CommandSender sender, String[] args) {
         if (args.length < 2) {
@@ -152,9 +197,7 @@ public class AdminCommand implements CommandExecutor {
             int diameter = Integer.parseInt(args[1]);
             plugin.getDatabaseManager().setDiameter(worldName, diameter);
             World world = Bukkit.getWorld(worldName);
-            if (world != null) {
-                world.getWorldBorder().setSize(diameter);
-            }
+            if (world != null) world.getWorldBorder().setSize(diameter);
             sender.sendMessage(MessageUtils.colorize("%primary%Diameter set to: %secondary%" + diameter));
         } catch (NumberFormatException e) {
             sender.sendMessage(MessageUtils.colorize("&cInvalid number!"));
@@ -212,10 +255,7 @@ public class AdminCommand implements CommandExecutor {
             return;
         }
 
-        String code = colorCodes.get(colorName);
-        if (code == null) {
-            code = "f";
-        }
+        String code = colorCodes.getOrDefault(colorName, "f");
 
         if (type.equals("primary")) {
             plugin.getConfig().set("Colors.Primary", code);
@@ -236,9 +276,7 @@ public class AdminCommand implements CommandExecutor {
 
         String sub = args[1].toLowerCase();
         StringBuilder message = new StringBuilder();
-        for (int i = 2; i < args.length; i++) {
-            message.append(args[i]).append(" ");
-        }
+        for (int i = 2; i < args.length; i++) message.append(args[i]).append(" ");
 
         plugin.getConfig().set("Tutorials." + sub, message.toString().trim());
         plugin.saveConfig();
@@ -430,22 +468,22 @@ public class AdminCommand implements CommandExecutor {
         plugin.saveConfig();
 
         if (enabled) {
-            // Kick all players from build worlds and prevent building
-            String kickMessage = plugin.getConfig().getString("Maintenance.KickMessage", "&cThe BuildWorld system is currently under maintenance. Please try again later.");
+            String kickMessage = plugin.getConfig().getString("Maintenance.KickMessage",
+                    "&cThe BuildWorld system is currently under maintenance. Please try again later.");
             for (World world : Bukkit.getWorlds()) {
                 if (plugin.getDatabaseManager().isBuildWorld(world.getName())) {
                     Location serverSpawn = plugin.getDatabaseManager().getSpawnLocation();
-                    if (serverSpawn == null) {
-                        serverSpawn = Bukkit.getWorlds().get(0).getSpawnLocation();
-                    }
+                    if (serverSpawn == null) serverSpawn = Bukkit.getWorlds().get(0).getSpawnLocation();
 
                     for (Player p : world.getPlayers()) {
-                        p.teleport(serverSpawn);
-                        p.sendMessage(MessageUtils.colorize(kickMessage));
+                        if (!p.hasPermission("buildworld.admin")) {
+                            p.teleport(serverSpawn);
+                            p.sendMessage(MessageUtils.colorize(kickMessage));
+                        }
                     }
                 }
             }
-            Bukkit.broadcastMessage(MessageUtils.colorize("&c&l[BuildWorld] &cMaintenance mode has been ENABLED. All players have been removed from build worlds."));
+            Bukkit.broadcastMessage(MessageUtils.colorize("&c&l[BuildWorld] &cMaintenance mode has been ENABLED."));
         } else {
             Bukkit.broadcastMessage(MessageUtils.colorize("&a&l[BuildWorld] &aMaintenance mode has been DISABLED. BuildWorld is now fully operational."));
         }
@@ -470,16 +508,13 @@ public class AdminCommand implements CommandExecutor {
         sender.sendMessage(MessageUtils.colorize("%secondary%/bwa GiveWorldCredits <player> <amount>"));
         sender.sendMessage(MessageUtils.colorize("%secondary%/bwa DeleteWorld <world>"));
         sender.sendMessage(MessageUtils.colorize("%secondary%/bwa Maintenance <true|false>"));
+        sender.sendMessage(MessageUtils.colorize("%secondary%/bwa visit <world> &7- Teleport to any world's spawn"));
     }
 
     private String resolveWorldName(String input) {
         String byNickname = plugin.getDatabaseManager().getWorldByNickname(input);
-        if (byNickname != null) {
-            return byNickname;
-        }
-        if (plugin.getDatabaseManager().isBuildWorld(input)) {
-            return input;
-        }
+        if (byNickname != null) return byNickname;
+        if (plugin.getDatabaseManager().isBuildWorld(input)) return input;
         return null;
     }
 }

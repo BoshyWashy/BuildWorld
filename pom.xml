@@ -6,7 +6,7 @@
 
     <groupId>org.example</groupId>
     <artifactId>BuildWorld</artifactId>
-    <version>1.0.1-Beta_Release</version>
+    <version>1.0.5-Beta_Release</version>
 
     <properties>
         <maven.compiler.source>21</maven.compiler.source>

@@ -19,6 +19,7 @@ public class DatabaseManager {
         this.type = plugin.getConfig().getString("Database.Type", "SQLITE");
         connect();
         createTables();
+        migrateSchema();
     }
 
     private void connect() {
@@ -50,6 +51,7 @@ public class DatabaseManager {
                     "item VARCHAR(64) DEFAULT 'GRASS_BLOCK'," +
                     "diameter INT DEFAULT 100," +
                     "is_open BOOLEAN DEFAULT FALSE," +
+                    "is_hidden BOOLEAN DEFAULT FALSE," +
                     "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
 
             stmt.execute("CREATE TABLE IF NOT EXISTS members (" +
@@ -91,6 +93,18 @@ public class DatabaseManager {
 
         } catch (SQLException e) {
             e.printStackTrace();
+        }
+    }
+
+    /**
+     * Adds any missing columns to existing tables (safe migration).
+     */
+    private void migrateSchema() {
+        // Add is_hidden column if it doesn't exist yet
+        try (Statement stmt = connection.createStatement()) {
+            stmt.execute("ALTER TABLE worlds ADD COLUMN is_hidden BOOLEAN DEFAULT FALSE");
+        } catch (SQLException ignored) {
+            // Column already exists – that's fine
         }
     }
 
@@ -285,6 +299,35 @@ public class DatabaseManager {
         }
         return false;
     }
+
+    // ── Hidden world support ────────────────────────────────────────────────
+
+    public void setHidden(String worldName, boolean hidden) {
+        try (PreparedStatement ps = connection.prepareStatement(
+                "UPDATE worlds SET is_hidden = ? WHERE world_name = ?")) {
+            ps.setBoolean(1, hidden);
+            ps.setString(2, worldName);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public boolean isHidden(String worldName) {
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT is_hidden FROM worlds WHERE world_name = ?")) {
+            ps.setString(1, worldName);
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) {
+                return rs.getBoolean("is_hidden");
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    // ── Diameter ────────────────────────────────────────────────────────────
 
     public void setDiameter(String worldName, int diameter) {
         try (PreparedStatement ps = connection.prepareStatement(
